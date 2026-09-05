@@ -121,6 +121,7 @@ export default function Dashboard() {
   const [vehicleColor, setVehicleColor] = useState<string>('b');
   const [currentLocation, setCurrentLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number; heading: number } | null>(null);
+  const stableHeadingRef = useRef(0);
 
   // Active trip from Firestore orders (drives the live map polylines + markers)
   const { tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
@@ -373,11 +374,14 @@ export default function Dashboard() {
     console.log('[v0] Starting location tracking for driver:', uid);
 
     const subscription = await watchLocation(async (coords) => {
-      const { latitude, longitude, heading } = coords;
+      const { latitude, longitude, heading, speed } = coords;
+      const hasReliableHeading = Number.isFinite(heading) && heading >= 0 && speed > 0.8;
+      if (hasReliableHeading) stableHeadingRef.current = heading;
 
       setCurrentLocation({ latitude, longitude });
-      // Feed the live map vehicle marker
-      setVehiclePosition({ lat: latitude, lng: longitude, heading: heading || 0 });
+      // Feed the live map vehicle marker. GPS heading is unreliable while stationary,
+      // so retain the last moving heading instead of snapping the vehicle around.
+      setVehiclePosition({ lat: latitude, lng: longitude, heading: stableHeadingRef.current });
 
       // CRITICAL: Update driver_locations/{uid} with GeoFire format
       // This is ONLY path client app uses to find nearby drivers

@@ -3,7 +3,7 @@ import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { firestore } from '@/config/firebase';
 
 type Period = 'today' | 'week' | 'month';
-export type DriverTrip = { id: string; pickup: string; destination: string; amount: number; createdAt: Date | null };
+export type DriverTrip = { id: string; pickup: string; destination: string; amount: number; createdAt: Date | null; workflowType: 'direct_trip' | 'store_delivery' | 'unknown' };
 
 function asDate(value: any): Date | null {
   if (!value) return null;
@@ -40,8 +40,11 @@ export function useDriverTripHistory(driverId: string | null, period: Period) {
           id: item.id,
           pickup: firstString(data.pickupAddress, data.pickup?.address, data.origin, data.pickup),
           destination: firstString(data.destinationAddress, data.destination?.address, data.dropoffAddress, data.dropoff?.address, data.destination),
-          amount: firstNumber(data.driverEarnings, data.earnings, data.fare, data.totalFare, data.amount, data.price),
+          amount: String(data.workflowType).toLowerCase() === 'store_delivery'
+            ? firstNumber(data.fee, data.driverEarnings, data.earnings, data.amount, data.price)
+            : firstNumber(data.total, data.driverEarnings, data.earnings, data.fare, data.totalFare, data.amount, data.price),
           createdAt: asDate(data.completedAt || data.updatedAt || data.createdAt),
+          workflowType: data.workflowType === 'direct_trip' || data.workflowType === 'store_delivery' ? data.workflowType : 'unknown',
         };
       }).filter((trip) => {
         const status = (snapshot.docs.find((doc) => doc.id === trip.id)?.data() as any)?.status;
