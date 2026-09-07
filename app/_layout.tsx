@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -7,8 +7,9 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { RegistrationProvider } from '@/context/RegistrationContext';
 import { TripRequestProvider } from '@/context/IncomingRidesContext';
 import GlobalTripRequestPanel from '@/components/GlobalTripRequestPanel';
-import { auth } from '@/config/firebase';
+import { auth, firestore } from '@/config/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 function SplashScreen({ onFinish }: { onFinish: () => void }) {
   // CRITICAL: Use useRef for Animated.Value to prevent re-creation on each render
@@ -94,6 +95,8 @@ export default function RootLayout() {
   const [showSplash, setShowSplash] = useState(true);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const pathname = usePathname();
   
   // Listen for authentication state changes
   useEffect(() => {
@@ -103,6 +106,22 @@ export default function RootLayout() {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.uid) {
+      setVerificationStatus(null);
+      return;
+    }
+
+    const driverRef = doc(firestore, 'drivers', currentUser.uid);
+    const unsubscribe = onSnapshot(driverRef, (snapshot) => {
+      setVerificationStatus(snapshot.exists() ? snapshot.data().verificationStatus ?? null : null);
+    }, () => {
+      setVerificationStatus(null);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.uid]);
   
   console.log('[v0] RootLayout render, showSplash:', showSplash);
 
@@ -173,8 +192,10 @@ export default function RootLayout() {
             <Stack.Screen name="forgot-password" />
             <Stack.Screen name="+not-found" />
           </Stack>
-          {/* GLOBAL RTDB-BASED TRIP REQUEST PANEL - ONLY renders for authenticated driver */}
-          <GlobalTripRequestPanel />
+          {/* Keep the RTDB listener mounted for fast resume, but only expose its effects on the approved driver's dashboard. */}
+          {isAuthenticated && verificationStatus === 'approved' && pathname === '/dashboard' && (
+            <GlobalTripRequestPanel />
+          )}
           <StatusBar style="light" />
         </TripRequestProvider>
       </RegistrationProvider>
