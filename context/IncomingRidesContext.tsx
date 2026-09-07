@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { ref, onValue, off } from 'firebase/database';
 import { onAuthStateChanged } from 'firebase/auth';
-import { database, auth } from '@/config/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { usePathname } from 'expo-router';
+import { database, auth, firestore } from '@/config/firebase';
 import { useAudioPlayer } from 'expo-audio';
 import requestSound from '@/assets/sounds/request.mp3';
 
@@ -50,6 +52,8 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [driverUid, setDriverUid] = useState<string | null>(null);
+  const [verificationStatus, setVerificationStatus] = useState<string | null>(null);
+  const pathname = usePathname();
   const requestPlayer = useAudioPlayer(requestSound);
 
   // Listen for auth state changes to get authenticated driver UID
@@ -67,6 +71,24 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!driverUid) {
+      setVerificationStatus(null);
+      return;
+    }
+
+    const driverRef = doc(firestore, 'drivers', driverUid);
+    const unsubscribe = onSnapshot(driverRef, (snapshot) => {
+      setVerificationStatus(
+        snapshot.exists() ? snapshot.data().verificationStatus ?? null : null,
+      );
+    }, () => {
+      setVerificationStatus(null);
+    });
+
+    return () => unsubscribe();
+  }, [driverUid]);
 
   // RTDB listener - ONLY starts when driverUid is available
   useEffect(() => {
@@ -116,11 +138,12 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
       if (activeRequest) {
         setCurrentRequest(activeRequest);
 
-        // Show panel on incoming request
-        if (activeRequest.status === 'incoming_request' && !isVisible) {
+        // Show panel and play the alert only where the panel is rendered.
+        const canExposeRequest = verificationStatus === 'approved' && pathname === '/dashboard';
+        if (activeRequest.status === 'incoming_request' && !isVisible && canExposeRequest) {
           setIsVisible(true);
           setIsMinimized(false);
-        try { requestPlayer.seekTo(0); requestPlayer.play(); } catch {}
+          try { requestPlayer.seekTo(0); requestPlayer.play(); } catch {}
         }
 
         // Handle terminal statuses - hide after brief delay
@@ -139,7 +162,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
     });
 
     return () => off(tripRequestsRef, 'value', listener);
-  }, [driverUid, currentRequest?.status, isVisible, requestPlayer]);
+  }, [driverUid, currentRequest?.status, isVisible, verificationStatus, pathname, requestPlayer]);
 
   const clearRequest = () => {
     setCurrentRequest(null);

@@ -12,12 +12,13 @@ import {
   Dimensions,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { router } from 'expo-router';
 import { Eye, EyeOff } from 'lucide-react-native';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { ref, get } from 'firebase/database';
-import { auth, database } from '@/config/firebase';
+import { auth, database, firestore } from '@/config/firebase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -31,6 +32,30 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPendingModal, setShowPendingModal] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (!user) return;
+
+      try {
+        const driverSnapshot = await getDoc(doc(firestore, 'drivers', user.uid));
+        const verificationStatus = driverSnapshot.exists()
+          ? driverSnapshot.data().verificationStatus
+          : null;
+
+        if (verificationStatus === 'approved') {
+          router.replace('/dashboard');
+        } else {
+          router.replace('/application-submitted');
+        }
+      } catch (error) {
+        console.error('[v0] Persisted session redirect failed:', error);
+        router.replace('/dashboard');
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const handleLogin = async () => {
     setError('');
