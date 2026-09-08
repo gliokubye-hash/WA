@@ -67,6 +67,7 @@ export function TripRequestProvider({ children }: { children: ReactNode }) {
         setCurrentRequest(null);
         setIsVisible(false);
         setIsMinimized(false);
+        try { requestPlayer.pause(); requestPlayer.seekTo(0); } catch {}
       }
     });
     return () => unsubscribe();

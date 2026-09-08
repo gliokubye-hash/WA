@@ -123,6 +123,12 @@ export default function Dashboard() {
   const [vehiclePosition, setVehiclePosition] = useState<{ lat: number; lng: number; heading: number } | null>(null);
   const stableHeadingRef = useRef(0);
 
+  useEffect(() => {
+    if (!auth.currentUser) {
+      router.replace('/');
+    }
+  }, [router]);
+
   // Active trip from Firestore orders (drives the live map polylines + markers)
   const { tripStatus, workflowType, markers, activePolyline, showPolyline, arrivalTime } =
     useActiveTrip(driverId);
